@@ -5,6 +5,9 @@
 part of flutter_blue;
 
 class BluetoothDescriptor {
+  static const String _methodReadResponse = 'ReadDescriptorResponse';
+  static const String _methodWriteResponse = 'WriteDescriptorResponse';
+
   static final Guid cccd = new Guid("00002902-0000-1000-8000-00805f9b34fb");
 
   final Guid uuid;
@@ -24,66 +27,72 @@ class BluetoothDescriptor {
         characteristicUuid = new Guid(p.characteristicUuid),
         _value = BehaviorSubject.seeded(p.value);
 
-  /// Retrieves the value of a specified descriptor
+  bool _matchesRequest(dynamic response, dynamic request) {
+    return (response.remoteId == request.remoteId) &&
+        (response.descriptorUuid == request.descriptorUuid) &&
+        (response.characteristicUuid == request.characteristicUuid) &&
+        (response.serviceUuid == request.serviceUuid);
+  }
+
   Future<List<int>> read() async {
-    var request = protos.ReadDescriptorRequest.create()
+    final request = protos.ReadDescriptorRequest.create()
       ..remoteId = deviceId.toString()
       ..descriptorUuid = uuid.toString()
       ..characteristicUuid = characteristicUuid.toString()
       ..serviceUuid = serviceUuid.toString();
 
-    await FlutterBlue.instance._channel
-        .invokeMethod('readDescriptor', request.writeToBuffer());
+    try {
+      await FlutterBlue.instance._channel.invokeMethod('readDescriptor', request.writeToBuffer());
 
-    return FlutterBlue.instance._methodStream
-        .where((m) => m.method == "ReadDescriptorResponse")
-        .map((m) => m.arguments)
-        .map((buffer) => new protos.ReadDescriptorResponse.fromBuffer(buffer))
-        .where((p) =>
-            (p.request.remoteId == request.remoteId) &&
-            (p.request.descriptorUuid == request.descriptorUuid) &&
-            (p.request.characteristicUuid == request.characteristicUuid) &&
-            (p.request.serviceUuid == request.serviceUuid))
-        .map((d) => d.value)
-        .first
-        .then((d) {
-      _value.add(d);
-      return d;
-    });
+      final value = await FlutterBlue.instance._methodStream
+          .where((m) => m.method == _methodReadResponse)
+          .map((m) => m.arguments)
+          .map((buffer) => protos.ReadDescriptorResponse.fromBuffer(buffer))
+          .where((p) => _matchesRequest(p.request, request))
+          .map((d) => d.value)
+          .first;
+
+      _value.add(value);
+      return value;
+    } catch (e) {
+      throw BluetoothException('Failed to read descriptor: $e');
+    }
   }
 
-  /// Writes the value of a descriptor
-  Future<Null> write(List<int> value) async {
-    var request = protos.WriteDescriptorRequest.create()
+  Future<void> write(List<int> value) async {
+    final request = protos.WriteDescriptorRequest.create()
       ..remoteId = deviceId.toString()
       ..descriptorUuid = uuid.toString()
       ..characteristicUuid = characteristicUuid.toString()
       ..serviceUuid = serviceUuid.toString()
       ..value = value;
 
-    await FlutterBlue.instance._channel
-        .invokeMethod('writeDescriptor', request.writeToBuffer());
+    try {
+      await FlutterBlue.instance._channel.invokeMethod('writeDescriptor', request.writeToBuffer());
 
-    return FlutterBlue.instance._methodStream
-        .where((m) => m.method == "WriteDescriptorResponse")
-        .map((m) => m.arguments)
-        .map((buffer) => new protos.WriteDescriptorResponse.fromBuffer(buffer))
-        .where((p) =>
-            (p.request.remoteId == request.remoteId) &&
-            (p.request.descriptorUuid == request.descriptorUuid) &&
-            (p.request.characteristicUuid == request.characteristicUuid) &&
-            (p.request.serviceUuid == request.serviceUuid))
-        .first
-        .then((w) => w.success)
-        .then((success) => (!success)
-            ? throw new Exception('Failed to write the descriptor')
-            : null)
-        .then((_) => _value.add(value))
-        .then((_) => null);
+      final success = await FlutterBlue.instance._methodStream
+          .where((m) => m.method == _methodWriteResponse)
+          .map((m) => m.arguments)
+          .map((buffer) => protos.WriteDescriptorResponse.fromBuffer(buffer))
+          .where((p) => _matchesRequest(p.request, request))
+          .first
+          .then((w) => w.success);
+
+      if (!success) {
+        throw BluetoothException('Failed to write descriptor');
+      }
+
+      _value.add(value);
+    } catch (e) {
+      throw BluetoothException('Write operation failed: $e');
+    }
   }
 
   @override
   String toString() {
-    return 'BluetoothDescriptor{uuid: $uuid, deviceId: $deviceId, serviceUuid: $serviceUuid, characteristicUuid: $characteristicUuid, value: ${_value.value}}';
+    final currentValue = _value.value;
+    return 'BluetoothDescriptor{uuid: $uuid, deviceId: $deviceId, '
+        'serviceUuid: $serviceUuid, characteristicUuid: $characteristicUuid, '
+        'value: ${currentValue ?? 'null'}}';
   }
 }

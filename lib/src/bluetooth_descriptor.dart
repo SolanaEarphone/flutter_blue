@@ -4,36 +4,41 @@
 
 part of flutter_blue;
 
+/// A class representing a Bluetooth GATT descriptor.
+/// Descriptors provide additional information about a characteristic's value.
 class BluetoothDescriptor {
   static const String _methodReadResponse = 'ReadDescriptorResponse';
   static const String _methodWriteResponse = 'WriteDescriptorResponse';
 
-  static final Guid cccd = new Guid("00002902-0000-1000-8000-00805f9b34fb");
+  /// The Client Characteristic Configuration Descriptor (CCCD) UUID
+  static final Guid cccd = Guid('00002902-0000-1000-8000-00805f9b34fb');
 
   final Guid uuid;
   final DeviceIdentifier deviceId;
   final Guid serviceUuid;
   final Guid characteristicUuid;
 
-  BehaviorSubject<List<int>> _value;
+  final BehaviorSubject<List<int>> _value;
   Stream<List<int>> get value => _value.stream;
-
   List<int> get lastValue => _value.value ?? [];
 
   BluetoothDescriptor.fromProto(protos.BluetoothDescriptor p)
-      : uuid = new Guid(p.uuid),
-        deviceId = new DeviceIdentifier(p.remoteId),
-        serviceUuid = new Guid(p.serviceUuid),
-        characteristicUuid = new Guid(p.characteristicUuid),
+      : uuid = Guid(p.uuid),
+        deviceId = DeviceIdentifier(p.remoteId),
+        serviceUuid = Guid(p.serviceUuid),
+        characteristicUuid = Guid(p.characteristicUuid),
         _value = BehaviorSubject.seeded(p.value);
 
-  bool _matchesRequest(dynamic response, dynamic request) {
-    return (response.remoteId == request.remoteId) &&
-        (response.descriptorUuid == request.descriptorUuid) &&
-        (response.characteristicUuid == request.characteristicUuid) &&
-        (response.serviceUuid == request.serviceUuid);
-  }
+  bool _matchesRequest(dynamic response, dynamic request) =>
+      response.remoteId == request.remoteId &&
+      response.descriptorUuid == request.descriptorUuid &&
+      response.characteristicUuid == request.characteristicUuid &&
+      response.serviceUuid == request.serviceUuid;
 
+  /// Reads the current value of the descriptor.
+  ///
+  /// Returns a [Future] that completes with the descriptor's value as a [List<int>].
+  /// Throws a [BluetoothException] if the read operation fails.
   Future<List<int>> read() async {
     final request = protos.ReadDescriptorRequest.create()
       ..remoteId = deviceId.toString()
@@ -59,6 +64,10 @@ class BluetoothDescriptor {
     }
   }
 
+  /// Writes a new value to the descriptor.
+  ///
+  /// [value] is the new value to write as a [List<int>].
+  /// Throws a [BluetoothException] if the write operation fails.
   Future<void> write(List<int> value) async {
     final request = protos.WriteDescriptorRequest.create()
       ..remoteId = deviceId.toString()
